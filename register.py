@@ -1,12 +1,10 @@
 import sys
-import sqlite3
+import socket
 
 from PyQt5.QtWidgets import QWidget
 from PyQt5 import uic
 from PyQt5.QtWidgets import QApplication
-
-
-DB_NAME = 'server_db.sqlite'
+from mail_client import Client
 
 
 class Registration(QWidget):
@@ -20,45 +18,59 @@ class Registration(QWidget):
         self.label_2.resize(135, 22)
         self.label_3.setText('')
         self.label_3.resize(160, 41)
-        self.lineEdit.setMaxLength(15)
+        self.lineEdit.setMaxLength(12)
 
         self.pushButton.clicked.connect(self.login)
         self.pushButton_2.clicked.connect(self.register)
 
-        # Подключение базы данных
-        self.db = sqlite3.connect(DB_NAME)
-        self.cur = self.db.cursor()
+        # Подключение к серверу
+        self.client = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_STREAM
+        )
+
+        self.client.connect(("127.0.0.1", 1234))
 
     def login(self):
         try:
-            username = self.lineEdit.text()
             # Проверка, есть ли пользователь в базе
-            if self.cur.execute(f"SELECT name FROM users WHERE name = '{username}'").fetchone() is None:
-                self.label_3.setText('Пользователь не найден')
+            username = self.lineEdit.text()
+            if username == '':
+                self.label_3.setText('Ввдеите имя пользователя')
             else:
-                self.label_3.setText('Успешный вход')
+                message = '001' + username
+                self.client.send(message.encode("utf-8"))
+                response = self.client.recv(2048).decode("utf-8")
+
+                # 500 - Код "ОК"
+                if response == '500':
+                    # Пользователь вошёл, запускаем саму почту
+                    self.hide()
+                    self.ex = Client(self.client, username)
+                    self.ex.show()
+                else:
+                    self.label_3.setText('Пользователь не найден')
         except Exception as e:
             self.label_3.setText('Ошибка')
             print(e)
 
     def register(self):
         try:
-            username = self.lineEdit.text()
             # Проверка, есть ли пользователь в базе
-            if self.cur.execute(f"SELECT name FROM users WHERE name = '{username}'").fetchone() is None:
-                all_users = [i for i in self.cur.execute(f"SELECT * FROM users")]
-                if len(all_users) == 0:
-                    self.cur.execute(f"INSERT INTO users VALUES (1, '{username}')")
-                else:
-                    self.cur.execute(f"INSERT INTO users VALUES ({all_users[-1][0] + 1}, '{username}')")
-                self.label_3.setText('Успешная регистрация')
-                self.db.commit()
+            username = self.lineEdit.text()
+            if username == '':
+                self.label_3.setText('Ввдеите имя пользователя')
             else:
-                self.label_3.setText('Такой пользователь уже есть')
+                message = '002' + username
+                self.client.send(message.encode("utf-8"))
+                response = self.client.recv(2048).decode("utf-8")
+
+                if response == '500':
+                    self.label_3.setText('Успешная регистрация')
+                else:
+                    self.label_3.setText('Такой пользователь уже есть')
         except Exception as e:
             print(e)
-        for value in self.cur.execute("""SELECT * FROM users"""):
-            print(value)
 
 
 if __name__ == '__main__':
